@@ -36,6 +36,15 @@ def load_spotify_data():
     df['liked'] = df['popularity'].apply(lambda x: 1 if x >= 60 else 0)
     return df
 
+@st.cache_data
+def get_pca(X_scaled):
+    pca = PCA(n_components=2)
+    return pca.fit_transform(X_scaled)
+
+@st.cache_data
+def compute_similarity(user_scaled, df_scaled):
+    return cosine_similarity(user_scaled, df_scaled)[0]
+
 spotify_df = load_spotify_data()
 model_features = ['danceability', 'energy', 'loudness', 'speechiness', 'acousticness',
                   'instrumentalness', 'liveness', 'tempo', 'duration_ms']
@@ -137,9 +146,12 @@ else:
                 else:
                     filtered_df = filtered_df[(filtered_df['energy'] < 0.4) & (filtered_df['valence'] < 0.4)]
 
+            # Optional: limit for performance
+            filtered_df = filtered_df.head(10000)
+
             if not filtered_df.empty:
                 df_scaled = scaler_subset.transform(filtered_df[available_features])
-                similarity = cosine_similarity(user_scaled, df_scaled)[0]
+                similarity = compute_similarity(user_scaled, df_scaled)
                 filtered_df = filtered_df.copy()
                 filtered_df['similarity'] = similarity
 
@@ -153,8 +165,7 @@ else:
                 st.warning("⚠️ No songs match your filter.")
 
             if st.checkbox("Show PCA Visualization"):
-                pca = PCA(n_components=2)
-                X_reduced = pca.fit_transform(X_scaled)
+                X_reduced = get_pca(X_scaled)
                 pca_df = pd.DataFrame(X_reduced, columns=["PC1", "PC2"])
                 pca_df["liked"] = y.values
 
