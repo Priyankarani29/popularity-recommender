@@ -21,8 +21,6 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, accuracy_score, f1_score, roc_auc_score, roc_curve
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
-from sklearn.svm import SVC
-from xgboost import XGBClassifier
 from sklearn.metrics.pairwise import cosine_similarity
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -90,9 +88,7 @@ elif page == "Model Evaluation":
     st.title("🧠 Model Evaluation - Predicting Valence")
     models = {
         "Logistic Regression": LogisticRegression(max_iter=1000),
-        "Random Forest": RandomForestClassifier(n_estimators=200),
-        "SVM": SVC(probability=True),
-        "XGBoost": XGBClassifier(use_label_encoder=False, eval_metric='logloss')
+        "Random Forest": RandomForestClassifier(n_estimators=200)
     }
 
     results = []
@@ -251,4 +247,3 @@ elif page == "🔁 Cosine Similarity Recommendation":
                 st.dataframe(recommended, use_container_width=True)
             except Exception as e:
                 st.error(f"Failed to process playlist: {e}")
-
