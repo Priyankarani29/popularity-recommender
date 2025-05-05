@@ -198,11 +198,11 @@ elif page == "ML-Based Recommendation":
             st.info("Please upload a JSON file with songs and their audio features.")
 
 # --------------------------------------
-# 🎧 Cosine Similarity Recommendation (Upload Only)
+# 🎧 Cosine Similarity Recommendation (Upload + Filter by Genre & Mood)
 # --------------------------------------
 elif page == "Cosine Similarity Recommendation":
     st.title("🎧 Content-Based Recommendation (Cosine Similarity)")
-    st.markdown("Upload your playlist to find similar tracks from the Spotify dataset based on audio features.")
+    st.markdown("Upload your playlist to find similar tracks based on audio features, with filters for genre and mood.")
 
     uploaded_file = st.file_uploader("📤 Upload your playlist JSON file (with audio features)", type="json")
 
@@ -212,26 +212,53 @@ elif page == "Cosine Similarity Recommendation":
             user_df = pd.DataFrame(user_data)
             user_df = user_df.dropna(subset=model_features[:-1])
 
+            # Optional: Predict mood using valence threshold
+            user_df['mood'] = user_df['valence'].apply(lambda x: 'Happy' if x > 0.5 else 'Calm')
+
             user_vectors = user_df[model_features[:-1]].values
             spotify_vectors = spotify_df[model_features[:-1]].values
 
             sim_matrix = cosine_similarity(user_vectors, spotify_vectors)
-
             top_n = st.slider("Select number of similar songs per uploaded track", 3, 20, 5)
-            all_recommendations = []
 
+            all_recommendations = []
             for i, row in user_df.iterrows():
                 sim_scores = sim_matrix[i]
                 top_indices = np.argsort(sim_scores)[::-1][:top_n]
                 top_matches = spotify_df.iloc[top_indices].copy()
                 top_matches['similarity_score'] = sim_scores[top_indices]
                 top_matches['source_track'] = row['track_name']
+                top_matches['source_mood'] = row['mood']
                 all_recommendations.append(top_matches)
 
             final_recommendations = pd.concat(all_recommendations, ignore_index=True)
 
-            st.subheader("🎯 Similar Songs for Uploaded Playlist")
-            st.dataframe(final_recommendations[['source_track', 'track_name', 'track_genre', 'similarity_score']], use_container_width=True)
+            # Predict mood for recommended songs too
+            final_recommendations['mood'] = final_recommendations['valence'].apply(lambda x: 'Happy' if x > 0.5 else 'Calm')
+
+            # --- Filters ---
+            col1, col2 = st.columns(2)
+
+            with col1:
+                genre_options = sorted(final_recommendations['track_genre'].dropna().unique())
+                selected_genres = st.multiselect("🎼 Filter by Genre(s)", genre_options)
+
+            with col2:
+                selected_mood = st.radio("🎭 Filter by Mood", ["All", "Happy", "Calm"])
+
+            filtered_df = final_recommendations.copy()
+
+            if selected_genres:
+                filtered_df = filtered_df[filtered_df['track_genre'].isin(selected_genres)]
+
+            if selected_mood != "All":
+                filtered_df = filtered_df[filtered_df['mood'] == selected_mood]
+
+            if filtered_df.empty:
+                st.warning("No songs match the selected filters.")
+            else:
+                st.subheader("🎯 Filtered Similar Songs for Uploaded Playlist")
+                st.dataframe(filtered_df[['source_track', 'track_name', 'track_genre', 'valence', 'mood', 'similarity_score']], use_container_width=True)
 
         except Exception as e:
             st.error(f"Error processing uploaded file: {e}")
