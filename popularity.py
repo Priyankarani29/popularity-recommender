@@ -7,7 +7,6 @@ Original file is located at
     https://colab.research.google.com/drive/1wG2e5HeGdd-TSz5E2EReH_pA0FBfgFUK
 """
 
-
 # --------------------------------------
 # 🎵 Spotify AI Recommender - Full App
 # --------------------------------------
@@ -22,6 +21,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, accuracy_score, f1_score, roc_auc_score, roc_curve
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
+from sklearn.svm import SVC
 from xgboost import XGBClassifier
 from sklearn.metrics.pairwise import cosine_similarity
 import matplotlib.pyplot as plt
@@ -57,8 +57,7 @@ page = st.sidebar.radio("Go to", [
     "EDA Dashboard", 
     "Model Evaluation", 
     "ML-Based Recommendation", 
-    "Cosine Similarity Recommendation",
-    "Hybrid Recommendation"
+    "Cosine Similarity Recommendation"
 ])
 
 # --------------------------------------
@@ -84,13 +83,14 @@ if page == "EDA Dashboard":
     st.pyplot(fig2)
 
 # --------------------------------------
-# 🧠 Model Evaluation 
+# 🧠 Model Evaluation
 # --------------------------------------
 elif page == "Model Evaluation":
-    st.title("🧠 Model Evaluation")
+    st.title("🧠 Model Evaluation - Predicting Valence")
     models = {
         "Logistic Regression": LogisticRegression(max_iter=1000),
         "Random Forest": RandomForestClassifier(n_estimators=200),
+        "SVM": SVC(probability=True),
         "XGBoost": XGBClassifier(use_label_encoder=False, eval_metric='logloss')
     }
 
@@ -137,23 +137,17 @@ elif page == "Model Evaluation":
     st.session_state.best_model = best_model
     st.session_state.selected_model_name = selected_model_name
 
-
-        except Exception as e:
-            st.error(f"Error processing uploaded file: {e}")
-    else:
-        st.info("Please upload a JSON file containing your playlist with audio features.")
-
 # --------------------------------------
-# 🎵 ML-Based Recommendation (Upload + Filters)
+# 🎵 ML-Based Recommendation
 # --------------------------------------
 elif page == "ML-Based Recommendation":
-    st.title("🎵 ML-Based Mood Song Recommender with Filters")
-    st.markdown("Upload your playlist, get mood predictions, and apply filters like genre and mood.")
+    st.title("🎵 ML-Based Mood Song Recommender")
+    st.markdown("Upload your playlist, get mood predictions, and filter by genre & mood.")
 
     if "best_model" not in st.session_state:
         st.warning("Please evaluate models first from the 'Model Evaluation' tab.")
     else:
-        uploaded_file = st.file_uploader("📤 Upload your playlist JSON file (with audio features)", type="json")
+        uploaded_file = st.file_uploader("📤 Upload your playlist JSON file", type="json")
 
         if uploaded_file:
             try:
@@ -172,7 +166,6 @@ elif page == "ML-Based Recommendation":
                 user_df['mood'] = user_df['predicted_valence'].apply(lambda x: 'Happy' if x == 1 else 'Calm')
 
                 st.success(f"✅ Model used: `{selected_model_name}`")
-                st.subheader("🎧 Mood Predictions for Uploaded Songs")
 
                 col1, col2 = st.columns(2)
                 with col1:
@@ -180,6 +173,8 @@ elif page == "ML-Based Recommendation":
                     selected_genres = st.multiselect("🎼 Filter by Genre(s)", genre_options)
                 with col2:
                     selected_mood = st.radio("🎭 Filter by Mood", ["All", "Happy", "Calm"])
+
+                top_n = st.slider("🔢 Select number of top songs to display", 3, 50, 10)
 
                 filtered_df = user_df.copy()
                 if selected_genres:
@@ -190,7 +185,10 @@ elif page == "ML-Based Recommendation":
                 if filtered_df.empty:
                     st.warning("No songs match the selected filters.")
                 else:
-                    st.dataframe(filtered_df[['track_name', 'track_genre', 'valence', 'mood']], use_container_width=True)
+                    top_songs = filtered_df.head(top_n)
+                    st.subheader(f"🎧 Top {top_n} Filtered Songs")
+                    st.dataframe(top_songs[['track_name', 'track_genre', 'valence', 'mood']], use_container_width=True)
+                    st.download_button("📥 Download Filtered Songs", data=top_songs.to_csv(index=False), file_name="filtered_songs.csv")
 
             except Exception as e:
                 st.error(f"Error processing uploaded file: {e}")
@@ -198,13 +196,13 @@ elif page == "ML-Based Recommendation":
             st.info("Please upload a JSON file with songs and their audio features.")
 
 # --------------------------------------
-# 🎧 Cosine Similarity Recommendation (Upload + Filters + Global Top N)
+# 🎧 Cosine Similarity Recommendation
 # --------------------------------------
 elif page == "Cosine Similarity Recommendation":
     st.title("🎧 Content-Based Recommendation (Cosine Similarity)")
-    st.markdown("Upload your playlist to find similar tracks based on audio features, with genre and mood filters.")
+    st.markdown("Upload your playlist to find similar tracks based on audio features.")
 
-    uploaded_file = st.file_uploader("📤 Upload your playlist JSON file (with audio features)", type="json")
+    uploaded_file = st.file_uploader("📤 Upload your playlist JSON file", type="json")
 
     if uploaded_file:
         try:
@@ -229,13 +227,14 @@ elif page == "Cosine Similarity Recommendation":
             with col2:
                 selected_mood = st.radio("🎭 Filter by Mood", ["All", "Happy", "Calm"])
 
+            top_n = st.slider("🔢 Select number of top songs to display", 3, 50, 10)
+
             filtered_df = scores_df.copy()
             if selected_genres:
                 filtered_df = filtered_df[filtered_df['track_genre'].isin(selected_genres)]
             if selected_mood != "All":
                 filtered_df = filtered_df[filtered_df['mood'] == selected_mood]
 
-            top_n = st.slider("Select number of top songs to display", 3, 50, 10)
             final_recommendations = filtered_df.sort_values("similarity_score", ascending=False).head(top_n)
 
             if final_recommendations.empty:
@@ -243,68 +242,9 @@ elif page == "Cosine Similarity Recommendation":
             else:
                 st.subheader(f"🎯 Top {top_n} Filtered Similar Songs")
                 st.dataframe(final_recommendations[['track_name', 'track_genre', 'valence', 'mood', 'similarity_score']], use_container_width=True)
+                st.download_button("📥 Download Recommendations", data=final_recommendations.to_csv(index=False), file_name="cosine_recommendations.csv")
 
         except Exception as e:
             st.error(f"Error processing uploaded file: {e}")
     else:
-        st.info("Please upload a JSON file containing your playlist with audio features.")
-
-# --------------------------------------
-# 🎧 Hybrid Recommendation (Mood + Cosine Similarity)
-# --------------------------------------
-elif page == "Hybrid Recommendation":
-    st.title("🎧 Hybrid Recommender: Mood + Similarity")
-    st.markdown("Get recommendations that are similar in sound and match the mood predicted by the ML model.")
-
-    if "best_model" not in st.session_state:
-        st.warning("Please evaluate models first from the 'Model Evaluation' tab.")
-    else:
-        uploaded_file = st.file_uploader("📤 Upload your playlist JSON file (with audio features)", type="json")
-
-        if uploaded_file:
-            try:
-                user_data = json.load(uploaded_file)
-                user_df = pd.DataFrame(user_data)
-                user_df = user_df.dropna(subset=model_features[:-1])
-
-                valence_model = st.session_state.best_model
-                selected_model_name = st.session_state.selected_model_name
-                valence_model.fit(X_scaled, y_valence)
-
-                user_scaled = scaler.transform(user_df[model_features[:-1]])
-                predictions = valence_model.predict(user_scaled)
-                user_df['predicted_valence'] = predictions
-                user_df['mood'] = user_df['predicted_valence'].apply(lambda x: 'Happy' if x == 1 else 'Calm')
-
-                st.success(f"✅ Mood predicted using: `{selected_model_name}`")
-                st.subheader("📥 Uploaded Playlist with Predicted Mood")
-                st.dataframe(user_df[['track_name', 'track_genre', 'valence', 'mood']], use_container_width=True)
-
-                spotify_df['mood'] = spotify_df['valence'].apply(lambda x: 'Happy' if x > 0.5 else 'Calm')
-                spotify_vectors = spotify_df[model_features[:-1]].values
-                user_vectors = user_df[model_features[:-1]].values
-                sim_matrix = cosine_similarity(user_vectors, spotify_vectors)
-
-                top_n = st.slider("Select number of top similar + mood-matched songs", 3, 50, 10)
-                recommendations = []
-
-                for i, row in user_df.iterrows():
-                    mood = row['mood']
-                    sim_scores = sim_matrix[i]
-                    mood_mask = spotify_df['mood'] == mood
-                    mood_df = spotify_df[mood_mask].copy()
-                    mood_df['similarity_score'] = sim_scores[mood_mask.to_numpy()]
-                    mood_df['source_track'] = row['track_name']
-                    mood_df['source_mood'] = mood
-                    top_matches = mood_df.sort_values("similarity_score", ascending=False).head(top_n)
-                    recommendations.append(top_matches)
-
-                final_recommendations = pd.concat(recommendations, ignore_index=True)
-
-                st.subheader("🎯 Hybrid Recommended Songs")
-                st.dataframe(final_recommendations[['source_track', 'track_name', 'track_genre', 'mood', 'similarity_score']], use_container_width=True)
-
-            except Exception as e:
-                st.error(f"Error processing uploaded file: {e}")
-        else:
-            st.info("Please upload a playlist with audio features.")
+        st.info("Please upload a JSON file with songs and their audio features.")
