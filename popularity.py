@@ -22,7 +22,7 @@ from sklearn.metrics import classification_report, accuracy_score, f1_score, roc
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.svm import SVC
-from xgboost import XGBClassifier
+from sklearn.neighbors import KNeighborsClassifier
 from sklearn.metrics.pairwise import cosine_similarity
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -42,6 +42,7 @@ def load_data():
     df[audio_cols] = df[audio_cols].fillna(df[audio_cols].mean()).astype(np.float32)
     return df, audio_cols
 
+# 📊 Load and prepare data
 spotify_df, model_features = load_data()
 X_valence = spotify_df[model_features[:-1]]
 y_valence = (spotify_df['valence'] > 0.5).astype(int)
@@ -68,7 +69,7 @@ if page == "EDA Dashboard":
     st.write(f"**Total Records:** {spotify_df.shape[0]:,}")
     st.dataframe(spotify_df[model_features].describe(), use_container_width=True)
 
-    st.subheader("🎧 Genre Distribution (Top 20)")
+    st.subheader("🎷 Genre Distribution (Top 20)")
     st.bar_chart(spotify_df['track_genre'].value_counts().head(20))
 
     st.subheader("📈 Correlation Heatmap")
@@ -83,7 +84,7 @@ if page == "EDA Dashboard":
     st.pyplot(fig2)
 
 # --------------------------------------
-# 🧠 Model Evaluation
+# 🧠 Model Evaluation and Comparison
 # --------------------------------------
 elif page == "Model Evaluation":
     st.title("🧠 Model Evaluation - Predicting Valence")
@@ -91,7 +92,7 @@ elif page == "Model Evaluation":
         "Logistic Regression": LogisticRegression(max_iter=1000),
         "Random Forest": RandomForestClassifier(n_estimators=200),
         "SVM": SVC(probability=True),
-        "XGBoost": XGBClassifier(use_label_encoder=False, eval_metric='logloss')
+        "KNN": KNeighborsClassifier(n_neighbors=5)
     }
 
     results = []
@@ -142,12 +143,12 @@ elif page == "Model Evaluation":
 # --------------------------------------
 elif page == "ML-Based Recommendation":
     st.title("🎵 ML-Based Mood Song Recommender")
-    st.markdown("Upload your playlist, get mood predictions, and filter by genre & mood.")
+    st.markdown("Upload your playlist and get mood-based song recommendations.")
 
     if "best_model" not in st.session_state:
         st.warning("Please evaluate models first from the 'Model Evaluation' tab.")
     else:
-        uploaded_file = st.file_uploader("📤 Upload your playlist JSON file", type="json")
+        uploaded_file = st.file_uploader("📄 Upload your playlist JSON file", type="json")
 
         if uploaded_file:
             try:
@@ -155,54 +156,43 @@ elif page == "ML-Based Recommendation":
                 user_df = pd.DataFrame(user_data)
                 user_df = user_df.dropna(subset=model_features[:-1])
 
-                valence_model = st.session_state.best_model
-                selected_model_name = st.session_state.selected_model_name
-                valence_model.fit(X_scaled, y_valence)
+                model = st.session_state.best_model
+                model.fit(X_scaled, y_valence)
 
                 user_scaled = scaler.transform(user_df[model_features[:-1]])
-                predictions = valence_model.predict(user_scaled)
+                predictions = model.predict(user_scaled)
 
                 user_df['predicted_valence'] = predictions
                 user_df['mood'] = user_df['predicted_valence'].apply(lambda x: 'Happy' if x == 1 else 'Calm')
 
-                st.success(f"✅ Model used: `{selected_model_name}`")
+                st.success(f"✅ Model used: `{st.session_state.selected_model_name}`")
+                st.subheader("🎷 Predictions")
 
-                col1, col2 = st.columns(2)
-                with col1:
-                    genre_options = sorted(user_df['track_genre'].dropna().unique())
-                    selected_genres = st.multiselect("🎼 Filter by Genre(s)", genre_options)
-                with col2:
-                    selected_mood = st.radio("🎭 Filter by Mood", ["All", "Happy", "Calm"])
+                filter_type = st.radio("Apply Filter", ["None", "Genre", "Mood"])
 
-                top_n = st.slider("🔢 Select number of top songs to display", 3, 50, 10)
-
-                filtered_df = user_df.copy()
-                if selected_genres:
-                    filtered_df = filtered_df[filtered_df['track_genre'].isin(selected_genres)]
-                if selected_mood != "All":
-                    filtered_df = filtered_df[filtered_df['mood'] == selected_mood]
-
-                if filtered_df.empty:
-                    st.warning("No songs match the selected filters.")
+                if filter_type == "Genre":
+                    genres = sorted(user_df['track_genre'].dropna().unique())
+                    selected = st.selectbox("Select Genre", genres)
+                    filtered_df = user_df[user_df['track_genre'] == selected]
+                elif filter_type == "Mood":
+                    mood = st.radio("Select Mood", ["Happy", "Calm"])
+                    filtered_df = user_df[user_df['mood'] == mood]
                 else:
-                    top_songs = filtered_df.head(top_n)
-                    st.subheader(f"🎧 Top {top_n} Filtered Songs")
-                    st.dataframe(top_songs[['track_name', 'track_genre', 'valence', 'mood']], use_container_width=True)
-                    st.download_button("📥 Download Filtered Songs", data=top_songs.to_csv(index=False), file_name="filtered_songs.csv")
+                    filtered_df = user_df
+
+                num_songs = st.slider("Number of songs to display", 3, 50, 10)
+                st.dataframe(filtered_df.head(num_songs)[['track_name', 'track_genre', 'valence', 'mood']], use_container_width=True)
 
             except Exception as e:
                 st.error(f"Error processing uploaded file: {e}")
-        else:
-            st.info("Please upload a JSON file with songs and their audio features.")
 
 # --------------------------------------
-# 🎧 Cosine Similarity Recommendation
+# 🎷 Cosine Similarity Recommendation
 # --------------------------------------
 elif page == "Cosine Similarity Recommendation":
-    st.title("🎧 Content-Based Recommendation (Cosine Similarity)")
-    st.markdown("Upload your playlist to find similar tracks based on audio features.")
+    st.title("🎷 Content-Based Recommendation")
 
-    uploaded_file = st.file_uploader("📤 Upload your playlist JSON file", type="json")
+    uploaded_file = st.file_uploader("📄 Upload your playlist JSON file", type="json")
 
     if uploaded_file:
         try:
@@ -215,36 +205,25 @@ elif page == "Cosine Similarity Recommendation":
             sim_matrix = cosine_similarity(user_vectors, spotify_vectors)
 
             all_scores = sim_matrix.flatten()
-            scores_df = spotify_df.copy()
-            scores_df = pd.concat([scores_df] * len(user_df), ignore_index=True)
+            scores_df = pd.concat([spotify_df] * len(user_df), ignore_index=True)
             scores_df['similarity_score'] = all_scores
             scores_df['mood'] = scores_df['valence'].apply(lambda x: 'Happy' if x > 0.5 else 'Calm')
 
-            col1, col2 = st.columns(2)
-            with col1:
-                genre_options = sorted(scores_df['track_genre'].dropna().unique())
-                selected_genres = st.multiselect("🎼 Filter by Genre(s)", genre_options)
-            with col2:
-                selected_mood = st.radio("🎭 Filter by Mood", ["All", "Happy", "Calm"])
+            filter_type = st.radio("Apply Filter", ["None", "Genre", "Mood"])
 
-            top_n = st.slider("🔢 Select number of top songs to display", 3, 50, 10)
+            if filter_type == "Genre":
+                genres = sorted(scores_df['track_genre'].dropna().unique())
+                selected = st.selectbox("Select Genre", genres)
+                scores_df = scores_df[scores_df['track_genre'] == selected]
+            elif filter_type == "Mood":
+                mood = st.radio("Select Mood", ["Happy", "Calm"])
+                scores_df = scores_df[scores_df['mood'] == mood]
 
-            filtered_df = scores_df.copy()
-            if selected_genres:
-                filtered_df = filtered_df[filtered_df['track_genre'].isin(selected_genres)]
-            if selected_mood != "All":
-                filtered_df = filtered_df[filtered_df['mood'] == selected_mood]
+            top_n = st.slider("Number of songs to recommend", 3, 50, 10)
+            top_songs = scores_df.sort_values("similarity_score", ascending=False).head(top_n)
 
-            final_recommendations = filtered_df.sort_values("similarity_score", ascending=False).head(top_n)
-
-            if final_recommendations.empty:
-                st.warning("No songs match the selected filters.")
-            else:
-                st.subheader(f"🎯 Top {top_n} Filtered Similar Songs")
-                st.dataframe(final_recommendations[['track_name', 'track_genre', 'valence', 'mood', 'similarity_score']], use_container_width=True)
-                st.download_button("📥 Download Recommendations", data=final_recommendations.to_csv(index=False), file_name="cosine_recommendations.csv")
+            st.subheader(f"🌟 Top {top_n} Recommendations")
+            st.dataframe(top_songs[['track_name', 'track_genre', 'valence', 'mood', 'similarity_score']], use_container_width=True)
 
         except Exception as e:
             st.error(f"Error processing uploaded file: {e}")
-    else:
-        st.info("Please upload a JSON file with songs and their audio features.")
